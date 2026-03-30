@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pro Stack - Master Remote</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        :root { --primary: #6366f1; --glass: rgba(15, 23, 42, 0.95); --border: rgba(255, 255, 255, 0.1); }
+        body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; background: #000; font-family: sans-serif; overflow: hidden; touch-action: none; }
+        
+        /* Video Stack */
+        .fullscreen-stack { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; z-index: 1; }
+        video { width: 100%; height: 33.333%; object-fit: cover; background: #000; pointer-events: none; }
+
+        /* Remote Control Visual Overlay (Only on Remote) */
+        #remoteOverlay { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            display: none; grid-template-rows: 1fr 1fr 1fr; z-index: 60; background: #000;
+        }
+        .remote-zone { border: 1px solid #222; display: flex; align-items: center; justify-content: center; color: #444; font-size: 12px; font-weight: bold; pointer-events: none; }
+
+        /* Interaction & Feedback */
+        #gestureLayer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; }
+        #feedback { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 18px; background: rgba(0,0,0,0.8); padding: 12px 24px; border-radius: 50px; opacity: 0; transition: opacity 0.2s; z-index: 200; pointer-events: none; }
+
+        /* UI Panel */
+        .floating-ui { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); width: 92%; max-width: 400px; background: var(--glass); backdrop-filter: blur(20px); border: 1px solid var(--border); border-radius: 28px; padding: 20px; z-index: 150; transition: all 0.4s; }
+        .floating-ui.hidden { opacity: 0; transform: translate(-50%, 40px); pointer-events: none; }
+
+        .tab-nav { display: flex; gap: 5px; margin-bottom: 15px; background: rgba(0,0,0,0.3); padding: 5px; border-radius: 15px; }
+        .tab-btn { flex: 1; padding: 10px; border: none; background: transparent; color: #94a3b8; border-radius: 10px; font-size: 11px; font-weight: bold; cursor: pointer; }
+        .tab-btn.active { background: var(--primary); color: white; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        input { width: 100%; padding: 14px; background: #111; border: 1px solid #333; color: #fff; border-radius: 14px; box-sizing: border-box; margin-bottom: 10px; }
+        .main-btn { width: 100%; padding: 14px; border-radius: 14px; border: none; font-weight: bold; cursor: pointer; background: var(--primary); color: white; margin-bottom: 5px; }
+        .status-tag { font-size: 11px; text-align: center; color: #10b981; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+    <div class="fullscreen-stack" id="playerView">
+        <video id="v1" playsinline loop muted></video>
+        <video id="v2" playsinline loop muted></video>
+        <video id="v3" playsinline loop muted></video>
+    </div>
+
+    <div id="remoteOverlay">
+        <div class="remote-zone">SLOT 1 CONTROL</div>
+        <div class="remote-zone">SLOT 2 CONTROL</div>
+        <div class="remote-zone">SLOT 3 CONTROL</div>
+    </div>
+
+    <div id="gestureLayer"></div>
+    <div id="feedback"></div>
+
+    <div class="floating-ui" id="dock">
+        <div class="tab-nav">
+            <button class="tab-btn active" onclick="switchTab(event, 't-play')">REMOTE</button>
+            <button class="tab-btn" onclick="switchTab(event, 't-sync')">SETUP</button>
+        </div>
+
+        <div id="t-play" class="tab-content active">
+            <input type="range" id="mainSeek" value="0" step="0.1" style="accent-color:var(--primary); margin-bottom:10px;">
+            <button class="main-btn" onclick="triggerCmd('PLAY')">PLAY/PAUSE PLAYER</button>
+            <button class="main-btn" style="background:#475569" onclick="triggerCmd('RAND_ALL')">RANDOM ALL</button>
+        </div>
+
+        <div id="t-sync" class="tab-content">
+            <input type="text" id="passcode" placeholder="Enter Room Passcode">
+            <div style="display:flex; gap:10px;">
+                <button class="main-btn" style="background:#1e293b;" onclick="initSync('player')">BE PLAYER</button>
+                <button class="main-btn" onclick="initSync('remote')">BE REMOTE</button>
+            </div>
+            <div id="remoteInput" style="display:none;">
+                <input type="url" id="linkIn" placeholder="Video URL...">
+                <button class="main-btn" onclick="triggerCmd('URL', document.getElementById('linkIn').value)">PUSH URL</button>
+            </div>
+            <div id="connStatus" class="status-tag">Ready</div>
+        </div>
+    </div>
+
+    <script>
+        const vids = [document.getElementById('v1'), document.getElementById('v2'), document.getElementById('v3')];
+        const feedback = document.getElementById('feedback');
+        const dock = document.getElementById('dock');
+        let peer, conn, role, hideThread, lastTap = 0, touchStartPos = {x:0, y:0};
+
+        function initSync(selectedRole) {
+            role = selectedRole;
+            const code = document.getElementById('passcode').value.trim();
+            if (!code) return alert("Enter passcode");
+
+            const myId = role === 'player' ? code + "-p" : code + "-r";
+            const targetId = role === 'player' ? code + "-r" : code + "-p";
+
+            if (peer) peer.destroy();
+            peer = new Peer(myId);
+
+            peer.on('open', () => {
+                document.getElementById('connStatus').innerText = `Role: ${role.toUpperCase()}`;
+                if (role === 'remote') {
+                    document.getElementById('remoteOverlay').style.display = 'grid';
+                    document.getElementById('playerView').style.display = 'none';
+                    document.getElementById('remoteInput').style.display = 'block';
+                    connectToTarget(targetId);
+                }
+            });
+
+            peer.on('connection', c => { conn = c; setupConn(); });
+        }
+
+        function connectToTarget(tid) { conn = peer.connect(tid); setupConn(); }
+
+        function setupConn() {
+            conn.on('open', () => { document.getElementById('connStatus').innerText = "Status: LINKED"; showFeedback("Paired!"); });
+            conn.on('data', data => {
+                if (role === 'player') executeCommand(data);
+            });
+        }
+
+        // Send command from Remote to Player
+        function triggerCmd(type, val = null) {
+            if (conn && conn.open) conn.send({ type, val });
+            else executeCommand({ type, val }); // Local fallback
+        }
+
+        // Only Player executes these
+        function executeCommand(cmd) {
+            if (cmd.type === 'URL') vids.forEach(v => { v.src = cmd.val; v.load(); v.muted = false; });
+            if (cmd.type === 'PLAY') {
+                const isPaused = vids[0].paused;
+                vids.forEach(v => isPaused ? v.play() : v.pause());
+            }
+            if (cmd.type === 'SKIP') vids.forEach(v => v.currentTime += cmd.val);
+            if (cmd.type === 'RAND_ONE') {
+                if(vids[cmd.val].duration) vids[cmd.val].currentTime = Math.random() * (vids[cmd.val].duration - 5);
+            }
+            if (cmd.type === 'RAND_ALL') {
+                vids.forEach(v => { if(v.duration) v.currentTime = Math.random() * (v.duration - 5); });
+            }
+            if (cmd.type === 'SOLO') vids.forEach((v, i) => v.muted = (i !== cmd.val));
+            if (cmd.type === 'SEEK') vids.forEach(v => v.currentTime = cmd.val);
+            
+            showFeedback("Remote: " + cmd.type);
+        }
+
+        // --- Gesture Engine (Works on both, but Remote sends to Player) ---
+        gestureLayer.addEventListener('touchstart', (e) => {
+            touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            const now = Date.now();
+            if (now - lastTap < 300) {
+                const isRight = touchStartPos.x > window.innerWidth / 2;
+                triggerCmd('SKIP', isRight ? 15 : -15);
+            }
+            lastTap = now;
+        });
+
+        gestureLayer.addEventListener('touchend', (e) => {
+            const touchEnd = e.changedTouches[0];
+            const distY = touchEnd.clientY - touchStartPos.y;
+            const section = Math.floor((touchStartPos.y / window.innerHeight) * 3);
+
+            if (distY > 100) triggerCmd('RAND_ONE', section);
+            else if (distY < -100) triggerCmd('RAND_ALL');
+            else if (Math.abs(distY) < 10) {
+                if (Date.now() - lastTap > 250) {
+                    triggerCmd('SOLO', section);
+                    resetTimer();
+                }
+            }
+        });
+
+        function resetTimer() {
+            dock.classList.remove('hidden');
+            clearTimeout(hideThread);
+            hideThread = setTimeout(() => dock.classList.add('hidden'), 4000);
+        }
+
+        function showFeedback(txt) {
+            feedback.innerText = txt; feedback.style.opacity = "1";
+            setTimeout(() => feedback.style.opacity = "0", 800);
+        }
+
+        function switchTab(e, id) {
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            e.currentTarget.classList.add('active');
+        }
+
+        document.getElementById('mainSeek').oninput = (e) => {
+            if (role === 'remote') triggerCmd('SEEK', e.target.value);
+            else vids.forEach(v => v.currentTime = e.target.value);
+        };
+
+        vids[0].onloadedmetadata = () => document.getElementById('mainSeek').max = vids[0].duration;
+    </script>
+</body>
+</html>
