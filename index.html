@@ -3,25 +3,43 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pro Stack HLS Ready</title>
+<title>Pro Stack FINAL</title>
 
-<!-- PeerJS -->
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-
-<!-- HLS.js -->
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 
 <style>
 body,html{margin:0;height:100%;background:#000;color:#fff;font-family:sans-serif;overflow:hidden}
 .stack{display:flex;flex-direction:column;height:100%}
 video{height:33.33%;width:100%;object-fit:cover;background:#111}
-.panel{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);width:90%;max-width:400px;background:#111;padding:10px;border-radius:10px}
-input,button{width:100%;margin:5px 0;padding:10px;border-radius:8px;border:none}
+
+.panel{
+position:fixed;bottom:10px;left:50%;transform:translateX(-50%);
+width:90%;max-width:400px;background:#111;padding:10px;border-radius:10px;
+}
+
+input,button{
+width:100%;margin:5px 0;padding:10px;border-radius:8px;border:none
+}
+
 button{background:#6366f1;color:#fff}
+
+#unlockScreen{
+position:fixed;inset:0;background:#000;
+display:flex;align-items:center;justify-content:center;
+z-index:9999;
+}
 </style>
 </head>
 
 <body>
+
+<!-- Unlock Screen -->
+<div id="unlockScreen">
+<button onclick="manualUnlock()" style="padding:20px;font-size:18px;background:#6366f1;color:#fff;border:none;border-radius:10px;">
+TAP TO START
+</button>
+</div>
 
 <div class="stack">
 <video id="v1" muted playsinline></video>
@@ -51,20 +69,41 @@ document.getElementById('v3')
 ];
 
 let peer, conn, role;
+let unlocked = false;
 
-// ---------- JOIN ----------
+// ---------------- UNLOCK ----------------
+function unlockVideos() {
+    vids.forEach(v => {
+        v.muted = true;
+        v.play().then(() => {
+            v.pause();
+            unlocked = true;
+            document.getElementById('status').innerText = "Unlocked ✅";
+        }).catch(() => {
+            document.getElementById('status').innerText = "Tap again";
+        });
+    });
+}
+
+function manualUnlock() {
+    unlockVideos();
+    document.getElementById('unlockScreen').style.display = 'none';
+}
+
+// ---------------- JOIN ----------------
 function join(r){
 role = r;
+
 const code = document.getElementById('pass').value.trim();
 if(!code) return alert("Enter passcode");
 
-const myId = role === 'player' ? code+"-p" : code+"-r";
-const targetId = role === 'player' ? code+"-r" : code+"-p";
+const myId = role==='player'? code+"-p":code+"-r";
+const targetId = role==='player'? code+"-r":code+"-p";
 
 peer = new Peer(myId);
 
 peer.on('open', ()=>{
-document.getElementById('status').innerText = "My ID: "+myId;
+document.getElementById('status').innerText = "ID: "+myId;
 
 if(role==='remote'){
 document.getElementById('remoteUI').style.display='block';
@@ -79,11 +118,11 @@ setupConn();
 
 peer.on('error', e=>{
 console.error(e);
-alert("Peer error");
+document.getElementById('status').innerText="Peer error";
 });
 }
 
-// ---------- CONNECT ----------
+// ---------------- CONNECT ----------------
 function connect(targetId){
 conn = peer.connect(targetId);
 
@@ -98,7 +137,7 @@ setTimeout(()=>connect(targetId),1000);
 setupConn();
 }
 
-// ---------- SETUP ----------
+// ---------------- SETUP ----------------
 function setupConn(){
 if(!conn) return;
 
@@ -107,7 +146,7 @@ if(role==='player') execute(data);
 });
 }
 
-// ---------- SEND ----------
+// ---------------- SEND ----------------
 function send(data){
 if(conn && conn.open){
 conn.send(data);
@@ -125,10 +164,10 @@ function sendPlay(){
 send({type:'PLAY'});
 }
 
-// ---------- VIDEO HANDLER ----------
+// ---------------- VIDEO LOADER ----------------
 function loadVideo(video, url){
 
-// Destroy old HLS if exists
+// destroy old HLS
 if(video.hls){
 video.hls.destroy();
 video.hls = null;
@@ -149,32 +188,37 @@ video.src = url;
 
 video.muted = true;
 
+if(unlocked){
 video.play().catch(()=>{
-document.getElementById('status').innerText="Tap to play";
+document.getElementById('status').innerText="Play failed";
 });
+}else{
+document.getElementById('status').innerText="Tap to unlock first";
+}
 }
 
-// ---------- EXECUTE ----------
+// ---------------- EXECUTE ----------------
 function execute(cmd){
 
 if(cmd.type==='URL'){
-vids.forEach(v=>{
-loadVideo(v, cmd.url);
-});
+vids.forEach(v=>loadVideo(v, cmd.url));
 }
 
 if(cmd.type==='PLAY'){
 vids.forEach(v=>{
+if(!unlocked){
+document.getElementById('status').innerText="Unlock first";
+return;
+}
 if(v.paused) v.play();
 else v.pause();
 });
 }
 }
 
-// ---------- UNLOCK ----------
-document.body.addEventListener('click', ()=>{
-vids.forEach(v=>v.play().then(()=>v.pause()));
-});
+// fallback unlock gesture
+document.body.addEventListener('touchstart', unlockVideos);
+document.body.addEventListener('click', unlockVideos);
 
 </script>
 
