@@ -1,162 +1,182 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pro Stack - Final Stable</title>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <style>
-        :root { --primary: #6366f1; --bg: #000; }
-        body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; background: var(--bg); font-family: sans-serif; overflow: hidden; color: white; }
-        
-        /* The "Unlock" Screen */
-        #launcher { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        .launch-btn { padding: 20px 40px; background: var(--primary); border: none; color: white; font-weight: bold; border-radius: 50px; font-size: 18px; cursor: pointer; box-shadow: 0 0 20px rgba(99,102,241,0.4); }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pro Stack HLS Ready</title>
 
-        /* Video Stack */
-        .stack { position: absolute; inset: 0; display: flex; flex-direction: column; z-index: 1; }
-        video { width: 100%; height: 33.33%; object-fit: cover; background: #111; pointer-events: none; }
+<!-- PeerJS -->
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
-        /* Remote Trackpad Overlay */
-        #remotePad { position: absolute; inset: 0; display: none; grid-template-rows: 1fr 1fr 1fr; z-index: 100; background: #000; }
-        .zone { border: 1px solid #222; display: flex; align-items: center; justify-content: center; color: #333; font-size: 10px; }
+<!-- HLS.js -->
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 
-        /* Control Panel */
-        .panel { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 400px; background: rgba(20,20,20,0.95); backdrop-filter: blur(10px); border: 1px solid #333; border-radius: 20px; padding: 15px; z-index: 1000; transition: 0.3s; }
-        .panel.hidden { opacity: 0; transform: translate(-50%, 20px); pointer-events: none; }
-        
-        input { width: 100%; padding: 12px; background: #111; border: 1px solid #444; color: white; border-radius: 10px; margin-bottom: 10px; box-sizing: border-box; }
-        button { width: 100%; padding: 12px; border-radius: 10px; border: none; font-weight: bold; cursor: pointer; }
-        .p-btn { background: var(--primary); color: white; margin-bottom: 5px; }
-        
-        #feedback { position: fixed; top: 20%; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); padding: 10px 20px; border-radius: 20px; font-size: 14px; opacity: 0; transition: 0.2s; z-index: 10000; }
-    </style>
+<style>
+body,html{margin:0;height:100%;background:#000;color:#fff;font-family:sans-serif;overflow:hidden}
+.stack{display:flex;flex-direction:column;height:100%}
+video{height:33.33%;width:100%;object-fit:cover;background:#111}
+.panel{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);width:90%;max-width:400px;background:#111;padding:10px;border-radius:10px}
+input,button{width:100%;margin:5px 0;padding:10px;border-radius:8px;border:none}
+button{background:#6366f1;color:#fff}
+</style>
 </head>
+
 <body>
 
-    <div id="launcher">
-        <h1 style="margin-bottom:10px;">Pro Stack</h1>
-        <p style="color:#666; margin-bottom:30px;">Initialize Video & Network Engines</p>
-        <button class="launch-btn" onclick="startApp()">START SYSTEM</button>
-    </div>
+<div class="stack">
+<video id="v1" muted playsinline></video>
+<video id="v2" muted playsinline></video>
+<video id="v3" muted playsinline></video>
+</div>
 
-    <div class="stack" id="playerUI">
-        <video id="v1" playsinline loop muted crossorigin="anonymous"></video>
-        <video id="v2" playsinline loop muted crossorigin="anonymous"></video>
-        <video id="v3" playsinline loop muted crossorigin="anonymous"></video>
-    </div>
+<div class="panel">
+<input id="pass" placeholder="Passcode (e.g 123)">
+<button onclick="join('player')">PLAYER</button>
+<button onclick="join('remote')">REMOTE</button>
 
-    <div id="remotePad">
-        <div class="zone">SLOT 1</div><div class="zone">SLOT 2</div><div class="zone">SLOT 3</div>
-    </div>
+<div id="remoteUI" style="display:none">
+<input id="url" placeholder="MP4 or M3U8 URL">
+<button onclick="sendURL()">PUSH VIDEO</button>
+</div>
 
-    <div id="feedback">Status: Ready</div>
+<button onclick="sendPlay()">PLAY / PAUSE</button>
+<p id="status">Idle</p>
+</div>
 
-    <div class="panel" id="dock">
-        <div id="setupView">
-            <input type="text" id="pass" placeholder="Enter Passcode (e.g. 123)">
-            <div style="display:flex; gap:10px;">
-                <button class="p-btn" onclick="join('player')">PLAYER</button>
-                <button class="p-btn" style="background:#444" onclick="join('remote')">REMOTE</button>
-            </div>
-        </div>
+<script>
+const vids = [
+document.getElementById('v1'),
+document.getElementById('v2'),
+document.getElementById('v3')
+];
 
-        <div id="activeView" style="display:none;">
-            <div id="remoteTools" style="display:none;">
-                <input type="url" id="urlIn" placeholder="Direct .mp4 URL">
-                <button class="p-btn" onclick="send('URL', document.getElementById('urlIn').value)">PUSH VIDEO</button>
-            </div>
-            <button class="p-btn" style="background:#222; border:1px solid #444" onclick="send('PLAY')">PLAY / PAUSE</button>
-            <p id="stat" style="font-size:10px; text-align:center; color:var(--primary); margin:5px 0 0 0;">Connected</p>
-        </div>
-    </div>
+let peer, conn, role;
 
-    <script>
-        const vids = [document.getElementById('v1'), document.getElementById('v2'), document.getElementById('v3')];
-        let peer, conn, role, hideT;
+// ---------- JOIN ----------
+function join(r){
+role = r;
+const code = document.getElementById('pass').value.trim();
+if(!code) return alert("Enter passcode");
 
-        // 1. Critical: Browser Unlock
-        function startApp() {
-            vids.forEach(v => { v.play().catch(()=>{}); v.pause(); });
-            document.getElementById('launcher').style.display = 'none';
-            msg("System Ready");
-        }
+const myId = role === 'player' ? code+"-p" : code+"-r";
+const targetId = role === 'player' ? code+"-r" : code+"-p";
 
-        // 2. Passcode Networking
-        function join(r) {
-            role = r;
-            const code = document.getElementById('pass').value.trim();
-            if(!code) return;
+peer = new Peer(myId);
 
-            // Use specific suffixes so IDs are predictable
-            const myId = role === 'player' ? code + "-p" : code + "-r";
-            const targetId = role === 'player' ? code + "-r" : code + "-p";
+peer.on('open', ()=>{
+document.getElementById('status').innerText = "My ID: "+myId;
 
-            peer = new Peer(myId);
+if(role==='remote'){
+document.getElementById('remoteUI').style.display='block';
+connect(targetId);
+}
+});
 
-            peer.on('open', () => {
-                document.getElementById('setupView').style.display = 'none';
-                document.getElementById('activeView').style.display = 'block';
-                if(role === 'remote') {
-                    document.getElementById('remoteTools').style.display = 'block';
-                    document.getElementById('remotePad').style.display = 'grid';
-                    document.getElementById('playerUI').style.display = 'none';
-                    // Attempt connection to player
-                    setTimeout(() => { conn = peer.connect(targetId); setupConn(); }, 500);
-                }
-                msg(`Mode: ${role.toUpperCase()}`);
-            });
+peer.on('connection', c=>{
+conn = c;
+setupConn();
+});
 
-            peer.on('connection', c => { conn = c; setupConn(); });
-            peer.on('error', (e) => { console.error(e); msg("ID Busy or Error"); });
-        }
+peer.on('error', e=>{
+console.error(e);
+alert("Peer error");
+});
+}
 
-        function setupConn() {
-            conn.on('open', () => { msg("Linked Successfully!"); document.getElementById('stat').innerText = "CONNECTED"; });
-            conn.on('data', data => { if(role === 'player') execute(data); });
-        }
+// ---------- CONNECT ----------
+function connect(targetId){
+conn = peer.connect(targetId);
 
-        function send(type, val = null) {
-            if(conn && conn.open) conn.send({type, val});
-            else execute({type, val}); // Local fallback if not paired
-        }
+conn.on('open', ()=>{
+document.getElementById('status').innerText="Connected";
+});
 
-        // 3. Command Execution
-        function execute(cmd) {
-            if(cmd.type === 'URL') {
-                vids.forEach(v => { 
-                    v.src = cmd.val; 
-                    v.load(); 
-                    v.play().catch(e => msg("Error: Autoplay Blocked"));
-                });
-            }
-            if(cmd.type === 'PLAY') vids.forEach(v => v.paused ? v.play() : v.pause());
-            if(cmd.type === 'SOLO') vids.forEach((v, i) => v.muted = (i !== cmd.val));
-            msg("Exec: " + cmd.type);
-        }
+conn.on('error', ()=>{
+setTimeout(()=>connect(targetId),1000);
+});
 
-        // 4. Gestures
-        let startY = 0;
-        document.body.addEventListener('touchstart', (e) => {
-            startY = e.touches[0].clientY;
-            clearTimeout(hideT);
-            document.getElementById('dock').classList.remove('hidden');
-        });
+setupConn();
+}
 
-        document.body.addEventListener('touchend', (e) => {
-            const endY = e.changedTouches[0].clientY;
-            const section = Math.floor((startY / window.innerHeight) * 3);
-            if(Math.abs(startY - endY) < 10) send('SOLO', section);
-            
-            // Auto hide controls
-            hideT = setTimeout(() => document.getElementById('dock').classList.add('hidden'), 4000);
-        });
+// ---------- SETUP ----------
+function setupConn(){
+if(!conn) return;
 
-        function msg(t) {
-            const f = document.getElementById('feedback');
-            f.innerText = t; f.style.opacity = 1;
-            setTimeout(() => f.style.opacity = 0, 2000);
-        }
-    </script>
+conn.on('data', data=>{
+if(role==='player') execute(data);
+});
+}
+
+// ---------- SEND ----------
+function send(data){
+if(conn && conn.open){
+conn.send(data);
+}else{
+execute(data);
+}
+}
+
+function sendURL(){
+const url = document.getElementById('url').value;
+send({type:'URL', url});
+}
+
+function sendPlay(){
+send({type:'PLAY'});
+}
+
+// ---------- VIDEO HANDLER ----------
+function loadVideo(video, url){
+
+// Destroy old HLS if exists
+if(video.hls){
+video.hls.destroy();
+video.hls = null;
+}
+
+if(url.endsWith('.m3u8')){
+if(Hls.isSupported()){
+const hls = new Hls();
+hls.loadSource(url);
+hls.attachMedia(video);
+video.hls = hls;
+}else if(video.canPlayType('application/vnd.apple.mpegurl')){
+video.src = url;
+}
+}else{
+video.src = url;
+}
+
+video.muted = true;
+
+video.play().catch(()=>{
+document.getElementById('status').innerText="Tap to play";
+});
+}
+
+// ---------- EXECUTE ----------
+function execute(cmd){
+
+if(cmd.type==='URL'){
+vids.forEach(v=>{
+loadVideo(v, cmd.url);
+});
+}
+
+if(cmd.type==='PLAY'){
+vids.forEach(v=>{
+if(v.paused) v.play();
+else v.pause();
+});
+}
+}
+
+// ---------- UNLOCK ----------
+document.body.addEventListener('click', ()=>{
+vids.forEach(v=>v.play().then(()=>v.pause()));
+});
+
+</script>
+
 </body>
 </html>
