@@ -3,153 +3,160 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pro Stack - Debug Version</title>
+    <title>Pro Stack - Final Stable</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        :root { --primary: #6366f1; --glass: rgba(15, 23, 42, 0.95); --border: rgba(255, 255, 255, 0.1); }
-        body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; background: #000; font-family: sans-serif; overflow: hidden; touch-action: none; color: white; }
+        :root { --primary: #6366f1; --bg: #000; }
+        body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; background: var(--bg); font-family: sans-serif; overflow: hidden; color: white; }
         
-        /* Start Overlay - Fixes Autoplay block */
-        #startOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+        /* The "Unlock" Screen */
+        #launcher { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .launch-btn { padding: 20px 40px; background: var(--primary); border: none; color: white; font-weight: bold; border-radius: 50px; font-size: 18px; cursor: pointer; box-shadow: 0 0 20px rgba(99,102,241,0.4); }
+
+        /* Video Stack */
+        .stack { position: absolute; inset: 0; display: flex; flex-direction: column; z-index: 1; }
+        video { width: 100%; height: 33.33%; object-fit: cover; background: #111; pointer-events: none; }
+
+        /* Remote Trackpad Overlay */
+        #remotePad { position: absolute; inset: 0; display: none; grid-template-rows: 1fr 1fr 1fr; z-index: 100; background: #000; }
+        .zone { border: 1px solid #222; display: flex; align-items: center; justify-content: center; color: #333; font-size: 10px; }
+
+        /* Control Panel */
+        .panel { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 400px; background: rgba(20,20,20,0.95); backdrop-filter: blur(10px); border: 1px solid #333; border-radius: 20px; padding: 15px; z-index: 1000; transition: 0.3s; }
+        .panel.hidden { opacity: 0; transform: translate(-50%, 20px); pointer-events: none; }
         
-        .fullscreen-stack { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; z-index: 1; }
-        video { width: 100%; height: 33.333%; object-fit: cover; background: #111; border-bottom: 1px solid #222; }
-
-        #remoteOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; grid-template-rows: 1fr 1fr 1fr; z-index: 60; background: #000; }
-        .remote-zone { border: 1px solid #222; display: flex; align-items: center; justify-content: center; color: #444; font-size: 10px; }
-
-        #gestureLayer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; }
-        #feedback { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 16px; background: rgba(220,38,38,0.8); padding: 12px 24px; border-radius: 50px; opacity: 0; transition: opacity 0.2s; z-index: 2000; pointer-events: none; }
-
-        .floating-ui { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); width: 92%; max-width: 400px; background: var(--glass); backdrop-filter: blur(20px); border: 1px solid var(--border); border-radius: 28px; padding: 20px; z-index: 150; }
-        .floating-ui.hidden { opacity: 0; transform: translate(-50%, 40px); pointer-events: none; }
-
-        input { width: 100%; padding: 14px; background: #111; border: 1px solid #333; color: #fff; border-radius: 14px; box-sizing: border-box; margin-bottom: 10px; }
-        .main-btn { width: 100%; padding: 14px; border-radius: 14px; border: none; font-weight: bold; cursor: pointer; background: var(--primary); color: white; margin-bottom: 5px; }
+        input { width: 100%; padding: 12px; background: #111; border: 1px solid #444; color: white; border-radius: 10px; margin-bottom: 10px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; border-radius: 10px; border: none; font-weight: bold; cursor: pointer; }
+        .p-btn { background: var(--primary); color: white; margin-bottom: 5px; }
+        
+        #feedback { position: fixed; top: 20%; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); padding: 10px 20px; border-radius: 20px; font-size: 14px; opacity: 0; transition: 0.2s; z-index: 10000; }
     </style>
 </head>
 <body>
 
-    <div id="startOverlay">
-        <h2>9:16 STACK READY</h2>
-        <p style="color: #888; font-size: 14px; margin-bottom: 20px;">Tap below to initialize video engine</p>
-        <button class="main-btn" style="width: 200px;" onclick="unlockEngine()">START SYSTEM</button>
+    <div id="launcher">
+        <h1 style="margin-bottom:10px;">Pro Stack</h1>
+        <p style="color:#666; margin-bottom:30px;">Initialize Video & Network Engines</p>
+        <button class="launch-btn" onclick="startApp()">START SYSTEM</button>
     </div>
 
-    <div class="fullscreen-stack" id="playerView">
+    <div class="stack" id="playerUI">
         <video id="v1" playsinline loop muted crossorigin="anonymous"></video>
         <video id="v2" playsinline loop muted crossorigin="anonymous"></video>
         <video id="v3" playsinline loop muted crossorigin="anonymous"></video>
     </div>
 
-    <div id="remoteOverlay">
-        <div class="remote-zone">ZONE 1</div><div class="remote-zone">ZONE 2</div><div class="remote-zone">ZONE 3</div>
+    <div id="remotePad">
+        <div class="zone">SLOT 1</div><div class="zone">SLOT 2</div><div class="zone">SLOT 3</div>
     </div>
 
-    <div id="gestureLayer"></div>
-    <div id="feedback"></div>
+    <div id="feedback">Status: Ready</div>
 
-    <div class="floating-ui hidden" id="dock">
-        <div id="setupPart">
-            <input type="text" id="passcode" placeholder="Enter Passcode (e.g. 777)">
+    <div class="panel" id="dock">
+        <div id="setupView">
+            <input type="text" id="pass" placeholder="Enter Passcode (e.g. 123)">
             <div style="display:flex; gap:10px;">
-                <button class="main-btn" onclick="initSync('player')">PLAYER</button>
-                <button class="main-btn" onclick="initSync('remote')">REMOTE</button>
-            </div>
-            <div id="remoteInput" style="display:none;">
-                <input type="url" id="linkIn" placeholder="Paste .mp4 link here">
-                <button class="main-btn" onclick="triggerCmd('URL', document.getElementById('linkIn').value)">PUSH URL</button>
+                <button class="p-btn" onclick="join('player')">PLAYER</button>
+                <button class="p-btn" style="background:#444" onclick="join('remote')">REMOTE</button>
             </div>
         </div>
-        <div id="controlPart" style="display:none;">
-            <button class="main-btn" onclick="triggerCmd('PLAY')">PLAY / PAUSE</button>
-            <p id="connStatus" style="font-size:10px; color:#10b981; text-align:center;">Standalone Mode</p>
+
+        <div id="activeView" style="display:none;">
+            <div id="remoteTools" style="display:none;">
+                <input type="url" id="urlIn" placeholder="Direct .mp4 URL">
+                <button class="p-btn" onclick="send('URL', document.getElementById('urlIn').value)">PUSH VIDEO</button>
+            </div>
+            <button class="p-btn" style="background:#222; border:1px solid #444" onclick="send('PLAY')">PLAY / PAUSE</button>
+            <p id="stat" style="font-size:10px; text-align:center; color:var(--primary); margin:5px 0 0 0;">Connected</p>
         </div>
     </div>
 
     <script>
         const vids = [document.getElementById('v1'), document.getElementById('v2'), document.getElementById('v3')];
-        const feedback = document.getElementById('feedback');
-        const dock = document.getElementById('dock');
-        let peer, conn, role, touchStartPos = {x:0, y:0};
+        let peer, conn, role, hideT;
 
-        function unlockEngine() {
-            // "Waking up" the videos
-            vids.forEach(v => { v.play(); v.pause(); });
-            document.getElementById('startOverlay').style.display = 'none';
-            dock.classList.remove('hidden');
+        // 1. Critical: Browser Unlock
+        function startApp() {
+            vids.forEach(v => { v.play().catch(()=>{}); v.pause(); });
+            document.getElementById('launcher').style.display = 'none';
+            msg("System Ready");
         }
 
-        // Error catching for video
-        vids.forEach((v, i) => {
-            v.onerror = () => showError(`Video ${i+1} failed to load. Check link.`);
-        });
+        // 2. Passcode Networking
+        function join(r) {
+            role = r;
+            const code = document.getElementById('pass').value.trim();
+            if(!code) return;
 
-        function showError(txt) {
-            feedback.innerText = txt; feedback.style.opacity = "1";
-            setTimeout(() => feedback.style.opacity = "0", 3000);
-        }
+            // Use specific suffixes so IDs are predictable
+            const myId = role === 'player' ? code + "-p" : code + "-r";
+            const targetId = role === 'player' ? code + "-r" : code + "-p";
 
-        function initSync(selectedRole) {
-            role = selectedRole;
-            const code = document.getElementById('passcode').value.trim();
-            if (!code) return alert("Enter passcode");
-
-            peer = new Peer(role === 'player' ? code + "-p" : code + "-r");
+            peer = new Peer(myId);
 
             peer.on('open', () => {
-                document.getElementById('connStatus').innerText = `READY: ${role.toUpperCase()}`;
-                if (role === 'remote') {
-                    document.getElementById('remoteOverlay').style.display = 'grid';
-                    document.getElementById('playerView').style.display = 'none';
-                    document.getElementById('remoteInput').style.display = 'block';
-                    conn = peer.connect(code + "-p");
-                    setupConn();
+                document.getElementById('setupView').style.display = 'none';
+                document.getElementById('activeView').style.display = 'block';
+                if(role === 'remote') {
+                    document.getElementById('remoteTools').style.display = 'block';
+                    document.getElementById('remotePad').style.display = 'grid';
+                    document.getElementById('playerUI').style.display = 'none';
+                    // Attempt connection to player
+                    setTimeout(() => { conn = peer.connect(targetId); setupConn(); }, 500);
                 }
-                document.getElementById('controlPart').style.display = 'block';
+                msg(`Mode: ${role.toUpperCase()}`);
             });
 
             peer.on('connection', c => { conn = c; setupConn(); });
-            peer.on('error', () => showError("Connection failed. Resetting..."));
+            peer.on('error', (e) => { console.error(e); msg("ID Busy or Error"); });
         }
 
         function setupConn() {
-            conn.on('open', () => {
-                document.getElementById('connStatus').innerText = "LINKED SUCCESS";
-                showError("Linked!"); 
-            });
-            conn.on('data', data => { if (role === 'player') executeCommand(data); });
+            conn.on('open', () => { msg("Linked Successfully!"); document.getElementById('stat').innerText = "CONNECTED"; });
+            conn.on('data', data => { if(role === 'player') execute(data); });
         }
 
-        function triggerCmd(type, val = null) {
-            if (conn && conn.open) conn.send({ type, val });
-            else executeCommand({ type, val });
+        function send(type, val = null) {
+            if(conn && conn.open) conn.send({type, val});
+            else execute({type, val}); // Local fallback if not paired
         }
 
-        function executeCommand(cmd) {
-            if (cmd.type === 'URL') {
+        // 3. Command Execution
+        function execute(cmd) {
+            if(cmd.type === 'URL') {
                 vids.forEach(v => { 
                     v.src = cmd.val; 
-                    v.load();
-                    v.play().catch(() => showError("Autoplay Blocked"));
+                    v.load(); 
+                    v.play().catch(e => msg("Error: Autoplay Blocked"));
                 });
             }
-            if (cmd.type === 'PLAY') vids.forEach(v => v.paused ? v.play() : v.pause());
-            // Add other commands as needed...
+            if(cmd.type === 'PLAY') vids.forEach(v => v.paused ? v.play() : v.pause());
+            if(cmd.type === 'SOLO') vids.forEach((v, i) => v.muted = (i !== cmd.val));
+            msg("Exec: " + cmd.type);
         }
 
-        // Gestures
-        gestureLayer.addEventListener('touchstart', (e) => {
-            touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        // 4. Gestures
+        let startY = 0;
+        document.body.addEventListener('touchstart', (e) => {
+            startY = e.touches[0].clientY;
+            clearTimeout(hideT);
+            document.getElementById('dock').classList.remove('hidden');
         });
 
-        gestureLayer.addEventListener('touchend', (e) => {
-            const touchEnd = e.changedTouches[0];
-            const distY = touchEnd.clientY - touchStartPos.y;
-            const section = Math.floor((touchStartPos.y / window.innerHeight) * 3);
-            if (Math.abs(distY) < 10) triggerCmd('SOLO', section);
+        document.body.addEventListener('touchend', (e) => {
+            const endY = e.changedTouches[0].clientY;
+            const section = Math.floor((startY / window.innerHeight) * 3);
+            if(Math.abs(startY - endY) < 10) send('SOLO', section);
+            
+            // Auto hide controls
+            hideT = setTimeout(() => document.getElementById('dock').classList.add('hidden'), 4000);
         });
 
+        function msg(t) {
+            const f = document.getElementById('feedback');
+            f.innerText = t; f.style.opacity = 1;
+            setTimeout(() => f.style.opacity = 0, 2000);
+        }
     </script>
 </body>
 </html>
