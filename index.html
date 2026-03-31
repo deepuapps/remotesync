@@ -1,226 +1,246 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pro Stack FINAL</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pro Stack - Master Remote</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        :root { --primary: #6366f1; --glass: rgba(15, 23, 42, 0.95); --border: rgba(255, 255, 255, 0.1); }
+        body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; background: #000; font-family: sans-serif; overflow: hidden; touch-action: none; }
+        
+        /* Video Stack */
+        .fullscreen-stack { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; z-index: 1; }
+        video { width: 100%; height: 33.333%; object-fit: cover; background: #000; pointer-events: none; border-bottom: 1px solid #111; }
 
-<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+        /* Remote Control Visual Overlay */
+        #remoteOverlay { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            display: none; grid-template-rows: 1fr 1fr 1fr; z-index: 60; background: #050505;
+        }
+        .remote-zone { border: 1px solid #222; display: flex; align-items: center; justify-content: center; color: #334155; font-size: 10px; font-weight: bold; pointer-events: none; text-transform: uppercase; letter-spacing: 1px; }
 
-<style>
-body,html{margin:0;height:100%;background:#000;color:#fff;font-family:sans-serif;overflow:hidden}
-.stack{display:flex;flex-direction:column;height:100%}
-video{height:33.33%;width:100%;object-fit:cover;background:#111}
+        /* Interaction & Feedback */
+        #gestureLayer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; }
+        #feedback { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 18px; background: rgba(99, 102, 241, 0.9); padding: 12px 24px; border-radius: 50px; opacity: 0; transition: opacity 0.2s; z-index: 200; pointer-events: none; font-weight: bold; }
 
-.panel{
-position:fixed;bottom:10px;left:50%;transform:translateX(-50%);
-width:90%;max-width:400px;background:#111;padding:10px;border-radius:10px;
-}
+        /* UI Panel */
+        .floating-ui { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); width: 92%; max-width: 400px; background: var(--glass); backdrop-filter: blur(20px); border: 1px solid var(--border); border-radius: 28px; padding: 20px; z-index: 150; transition: all 0.4s; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); }
+        .floating-ui.hidden { opacity: 0; transform: translate(-50%, 40px); pointer-events: none; }
 
-input,button{
-width:100%;margin:5px 0;padding:10px;border-radius:8px;border:none
-}
+        .tab-nav { display: flex; gap: 5px; margin-bottom: 15px; background: rgba(0,0,0,0.3); padding: 5px; border-radius: 15px; }
+        .tab-btn { flex: 1; padding: 10px; border: none; background: transparent; color: #94a3b8; border-radius: 10px; font-size: 11px; font-weight: bold; cursor: pointer; }
+        .tab-btn.active { background: var(--primary); color: white; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
 
-button{background:#6366f1;color:#fff}
-
-#unlockScreen{
-position:fixed;inset:0;background:#000;
-display:flex;align-items:center;justify-content:center;
-z-index:9999;
-}
-</style>
+        input { width: 100%; padding: 14px; background: #111; border: 1px solid #333; color: #fff; border-radius: 14px; box-sizing: border-box; margin-bottom: 10px; font-size: 14px; }
+        .main-btn { width: 100%; padding: 14px; border-radius: 14px; border: none; font-weight: bold; cursor: pointer; background: var(--primary); color: white; margin-bottom: 8px; transition: opacity 0.2s; }
+        .main-btn:active { opacity: 0.7; }
+        .status-tag { font-size: 11px; text-align: center; color: #10b981; margin-top: 10px; font-family: monospace; }
+    </style>
 </head>
-
 <body>
 
-<!-- Unlock Screen -->
-<div id="unlockScreen">
-<button onclick="manualUnlock()" style="padding:20px;font-size:18px;background:#6366f1;color:#fff;border:none;border-radius:10px;">
-TAP TO START
-</button>
-</div>
+    <div class="fullscreen-stack" id="playerView">
+        <video id="v1" playsinline loop muted></video>
+        <video id="v2" playsinline loop muted></video>
+        <video id="v3" playsinline loop muted></video>
+    </div>
 
-<div class="stack">
-<video id="v1" muted playsinline></video>
-<video id="v2" muted playsinline></video>
-<video id="v3" muted playsinline></video>
-</div>
+    <div id="remoteOverlay">
+        <div class="remote-zone">Slot 1 - Tap to Solo / Swipe to Random</div>
+        <div class="remote-zone">Slot 2 - Tap to Solo / Swipe to Random</div>
+        <div class="remote-zone">Slot 3 - Tap to Solo / Swipe to Random</div>
+    </div>
 
-<div class="panel">
-<input id="pass" placeholder="Passcode (e.g 123)">
-<button onclick="join('player')">PLAYER</button>
-<button onclick="join('remote')">REMOTE</button>
+    <div id="gestureLayer"></div>
+    <div id="feedback">READY</div>
 
-<div id="remoteUI" style="display:none">
-<input id="url" placeholder="MP4 or M3U8 URL">
-<button onclick="sendURL()">PUSH VIDEO</button>
-</div>
+    <div class="floating-ui" id="dock">
+        <div class="tab-nav">
+            <button class="tab-btn active" onclick="switchTab(event, 't-play')">CONTROLS</button>
+            <button class="tab-btn" onclick="switchTab(event, 't-sync')">CONNECTION</button>
+        </div>
 
-<button onclick="sendPlay()">PLAY / PAUSE</button>
-<p id="status">Idle</p>
-</div>
+        <div id="t-play" class="tab-content active">
+            <input type="range" id="mainSeek" value="0" step="0.1" style="accent-color:var(--primary); margin-bottom:15px; width: 100%;">
+            <button class="main-btn" onclick="triggerCmd('PLAY')">PLAY / PAUSE ALL</button>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <button class="main-btn" style="background:#475569" onclick="triggerCmd('RAND_ALL')">RANDOMIZE</button>
+                <button class="main-btn" style="background:#475569" onclick="triggerCmd('SKIP', 15)">+15s</button>
+            </div>
+        </div>
 
-<script>
-const vids = [
-document.getElementById('v1'),
-document.getElementById('v2'),
-document.getElementById('v3')
-];
+        <div id="t-sync" class="tab-content">
+            <input type="text" id="passcode" placeholder="Enter Room Passcode (e.g. 888)">
+            <div style="display:flex; gap:10px;">
+                <button class="main-btn" style="background:#1e293b;" onclick="initSync('player')">SET AS PLAYER</button>
+                <button class="main-btn" onclick="initSync('remote')">SET AS REMOTE</button>
+            </div>
+            <div id="remoteInput" style="display:none; margin-top: 15px; border-top: 1px solid #333; pt: 15px;">
+                <input type="url" id="linkIn" placeholder="Direct Video URL (.mp4)">
+                <button class="main-btn" onclick="triggerCmd('URL', document.getElementById('linkIn').value)">PUSH VIDEO TO PLAYER</button>
+            </div>
+            <div id="connStatus" class="status-tag">Status: Offline</div>
+        </div>
+    </div>
 
-let peer, conn, role;
-let unlocked = false;
+    <script>
+        const vids = [document.getElementById('v1'), document.getElementById('v2'), document.getElementById('v3')];
+        const feedback = document.getElementById('feedback');
+        const dock = document.getElementById('dock');
+        const gestureLayer = document.getElementById('gestureLayer');
+        let peer, conn, role, hideThread, lastTap = 0, touchStartPos = {x:0, y:0};
 
-// ---------------- UNLOCK ----------------
-function unlockVideos() {
-    vids.forEach(v => {
-        v.muted = true;
-        v.play().then(() => {
-            v.pause();
-            unlocked = true;
-            document.getElementById('status').innerText = "Unlocked ✅";
-        }).catch(() => {
-            document.getElementById('status').innerText = "Tap again";
+        function initSync(selectedRole) {
+            role = selectedRole;
+            const code = document.getElementById('passcode').value.trim();
+            if (!code) return alert("Please enter a room passcode");
+
+            const myId = role === 'player' ? code + "-p" : code + "-r";
+            const targetId = role === 'player' ? code + "-r" : code + "-p";
+
+            if (peer) peer.destroy();
+            peer = new Peer(myId);
+
+            peer.on('open', () => {
+                document.getElementById('connStatus').innerText = `ID: ${myId} (Waiting...)`;
+                if (role === 'remote') {
+                    document.getElementById('remoteOverlay').style.display = 'grid';
+                    document.getElementById('playerView').style.display = 'none';
+                    document.getElementById('remoteInput').style.display = 'block';
+                    // Attempt connection to player
+                    connectToTarget(targetId);
+                }
+            });
+
+            peer.on('connection', c => {
+                conn = c;
+                setupConn();
+            });
+
+            peer.on('error', (err) => {
+                console.error(err);
+                if(err.type === 'peer-not-found' && role === 'remote') {
+                    document.getElementById('connStatus').innerText = "Player not found. Retrying...";
+                    setTimeout(() => connectToTarget(targetId), 3000);
+                }
+            });
+        }
+
+        function connectToTarget(tid) {
+            conn = peer.connect(tid, { reliable: true });
+            setupConn();
+        }
+
+        function setupConn() {
+            conn.on('open', () => {
+                document.getElementById('connStatus').innerText = "Status: LINKED TO " + conn.peer;
+                showFeedback("LINKED!");
+            });
+            conn.on('data', data => {
+                if (role === 'player') executeCommand(data);
+            });
+            conn.on('close', () => {
+                document.getElementById('connStatus').innerText = "Connection lost. Reconnecting...";
+                if(role === 'remote') setTimeout(() => initSync('remote'), 2000);
+            });
+        }
+
+        function triggerCmd(type, val = null) {
+            if (conn && conn.open) {
+                conn.send({ type, val });
+                showFeedback("Sent: " + type);
+            } else {
+                executeCommand({ type, val }); // Local fallback
+            }
+        }
+
+        function executeCommand(cmd) {
+            if (cmd.type === 'URL') {
+                vids.forEach(v => {
+                    v.src = cmd.val;
+                    v.load();
+                    v.muted = false;
+                    v.play().catch(e => console.log("Unlock required"));
+                });
+            }
+            if (cmd.type === 'PLAY') {
+                const isPaused = vids[0].paused;
+                vids.forEach(v => isPaused ? v.play() : v.pause());
+            }
+            if (cmd.type === 'SKIP') vids.forEach(v => v.currentTime += cmd.val);
+            if (cmd.type === 'RAND_ONE') {
+                const v = vids[cmd.val];
+                if(v.duration) v.currentTime = Math.random() * (v.duration - 2);
+            }
+            if (cmd.type === 'RAND_ALL') {
+                vids.forEach(v => { if(v.duration) v.currentTime = Math.random() * (v.duration - 2); });
+            }
+            if (cmd.type === 'SOLO') vids.forEach((v, i) => v.muted = (i !== cmd.val));
+            if (cmd.type === 'SEEK') vids.forEach(v => v.currentTime = cmd.val);
+            
+            showFeedback(cmd.type);
+        }
+
+        // Gesture Engine
+        gestureLayer.addEventListener('touchstart', (e) => {
+            touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            const now = Date.now();
+            if (now - lastTap < 300) {
+                const isRight = touchStartPos.x > window.innerWidth / 2;
+                triggerCmd('SKIP', isRight ? 15 : -15);
+            }
+            lastTap = now;
+            resetTimer();
         });
-    });
-}
 
-function manualUnlock() {
-    unlockVideos();
-    document.getElementById('unlockScreen').style.display = 'none';
-}
+        gestureLayer.addEventListener('touchend', (e) => {
+            const touchEnd = e.changedTouches[0];
+            const distY = touchEnd.clientY - touchStartPos.y;
+            const section = Math.floor((touchStartPos.y / window.innerHeight) * 3);
 
-// ---------------- JOIN ----------------
-function join(r){
-role = r;
+            if (distY > 80) triggerCmd('RAND_ONE', section);
+            else if (distY < -80) triggerCmd('RAND_ALL');
+            else if (Math.abs(distY) < 10) {
+                if (Date.now() - lastTap > 250) {
+                    triggerCmd('SOLO', section);
+                }
+            }
+        });
 
-const code = document.getElementById('pass').value.trim();
-if(!code) return alert("Enter passcode");
+        function resetTimer() {
+            dock.classList.remove('hidden');
+            clearTimeout(hideThread);
+            hideThread = setTimeout(() => {
+                if(role === 'remote' || vids[0].src) dock.classList.add('hidden');
+            }, 5000);
+        }
 
-const myId = role==='player'? code+"-p":code+"-r";
-const targetId = role==='player'? code+"-r":code+"-p";
+        function showFeedback(txt) {
+            feedback.innerText = txt; 
+            feedback.style.opacity = "1";
+            setTimeout(() => feedback.style.opacity = "0", 1000);
+        }
 
-peer = new Peer(myId);
+        function switchTab(e, id) {
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            e.currentTarget.classList.add('active');
+        }
 
-peer.on('open', ()=>{
-document.getElementById('status').innerText = "ID: "+myId;
+        document.getElementById('mainSeek').oninput = (e) => {
+            triggerCmd('SEEK', e.target.value);
+        };
 
-if(role==='remote'){
-document.getElementById('remoteUI').style.display='block';
-connect(targetId);
-}
-});
+        vids[0].onloadedmetadata = () => {
+            document.getElementById('mainSeek').max = vids[0].duration;
+        };
 
-peer.on('connection', c=>{
-conn = c;
-setupConn();
-});
-
-peer.on('error', e=>{
-console.error(e);
-document.getElementById('status').innerText="Peer error";
-});
-}
-
-// ---------------- CONNECT ----------------
-function connect(targetId){
-conn = peer.connect(targetId);
-
-conn.on('open', ()=>{
-document.getElementById('status').innerText="Connected";
-});
-
-conn.on('error', ()=>{
-setTimeout(()=>connect(targetId),1000);
-});
-
-setupConn();
-}
-
-// ---------------- SETUP ----------------
-function setupConn(){
-if(!conn) return;
-
-conn.on('data', data=>{
-if(role==='player') execute(data);
-});
-}
-
-// ---------------- SEND ----------------
-function send(data){
-if(conn && conn.open){
-conn.send(data);
-}else{
-execute(data);
-}
-}
-
-function sendURL(){
-const url = document.getElementById('url').value;
-send({type:'URL', url});
-}
-
-function sendPlay(){
-send({type:'PLAY'});
-}
-
-// ---------------- VIDEO LOADER ----------------
-function loadVideo(video, url){
-
-// destroy old HLS
-if(video.hls){
-video.hls.destroy();
-video.hls = null;
-}
-
-if(url.endsWith('.m3u8')){
-if(Hls.isSupported()){
-const hls = new Hls();
-hls.loadSource(url);
-hls.attachMedia(video);
-video.hls = hls;
-}else if(video.canPlayType('application/vnd.apple.mpegurl')){
-video.src = url;
-}
-}else{
-video.src = url;
-}
-
-video.muted = true;
-
-if(unlocked){
-video.play().catch(()=>{
-document.getElementById('status').innerText="Play failed";
-});
-}else{
-document.getElementById('status').innerText="Tap to unlock first";
-}
-}
-
-// ---------------- EXECUTE ----------------
-function execute(cmd){
-
-if(cmd.type==='URL'){
-vids.forEach(v=>loadVideo(v, cmd.url));
-}
-
-if(cmd.type==='PLAY'){
-vids.forEach(v=>{
-if(!unlocked){
-document.getElementById('status').innerText="Unlock first";
-return;
-}
-if(v.paused) v.play();
-else v.pause();
-});
-}
-}
-
-// fallback unlock gesture
-document.body.addEventListener('touchstart', unlockVideos);
-document.body.addEventListener('click', unlockVideos);
-
-</script>
-
+        // UI auto-hide initialization
+        document.body.addEventListener('mousemove', resetTimer);
+    </script>
 </body>
 </html>
